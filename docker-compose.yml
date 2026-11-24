@@ -1,0 +1,15 @@
+# Optional: start a local PostgreSQL with `docker compose up -d`
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: leave_db
+      POSTGRES_USER: leave_user
+      POSTGRES_PASSWORD: leave_pass
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+volumes:
+  pgdata:
