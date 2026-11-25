@@ -121,3 +121,23 @@ def test_other_employees_leave_does_not_block(client_for, employee, other_employ
     make_leave(other_employee, start=10, end=12)
     response = client_for(employee).post(URL, payload(day, 10, 12), format="json")
     assert response.status_code == 201
+
+
+def test_manager_can_create_own_leave(client_for, manager, day):
+    response = client_for(manager).post(URL, payload(day, 3, 4), format="json")
+
+    assert response.status_code == 201
+    assert response.data["status"] == "PENDING"
+    assert response.data["employee"]["id"] == manager.id
+    assert response.data["approved_by"] is None
+
+
+def test_admin_cannot_create_leave(client_for, admin_user, day):
+    response = client_for(admin_user).post(URL, payload(day, 3, 4), format="json")
+    assert response.status_code == 403
+
+
+def test_overlap_rule_also_applies_to_managers(client_for, manager, make_leave, day):
+    make_leave(manager, start=10, end=12)
+    response = client_for(manager).post(URL, payload(day, 11, 15), format="json")
+    assert response.status_code == 400

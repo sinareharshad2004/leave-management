@@ -15,6 +15,16 @@ class UserManager(BaseUserManager):
         user.save(using=self._db)
         return user
 
+    def get_by_natural_key(self, email):
+        """
+        Used by Django's login. Email is matched ignoring upper/lower case, so
+        an account registered as asha@example.com can log in as Asha@Example.com.
+        """
+        try:
+            return self.get(email=email)
+        except self.model.DoesNotExist:
+            return self.get(email__iexact=email)
+
     def create_user(self, email, password=None, **extra_fields):
         extra_fields.setdefault("is_staff", False)
         extra_fields.setdefault("is_superuser", False)

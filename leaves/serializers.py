@@ -5,13 +5,13 @@ from rest_framework import serializers
 from . import services
 from .models import Leave
 
-User = get_user_model() 
+User = get_user_model()
 
 
 class EmployeeSummarySerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ["id", "name", "email"]
+        fields = ["id", "name", "email", "role"]
         read_only_fields = fields
 
 
@@ -21,6 +21,18 @@ class LeaveSerializer(serializers.ModelSerializer):
     # None when nobody has reviewed the leave yet. Needs select_related("approved_by").
     approved_by_name = serializers.CharField(
         source="approved_by.name", read_only=True, default=None
+    )
+    # Set only after the owner deleted their own pending leave (status DELETED).
+    deleted_by_name = serializers.CharField(
+        source="deleted_by.name", read_only=True, default=None
+    )
+    # Drives the buttons in a UI: false once the leave is APPROVED / REJECTED,
+    # or when the current user is not the owner.
+    can_modify = serializers.SerializerMethodField(
+        help_text="true while the owner may still edit or delete this leave."
+    )
+    can_review = serializers.SerializerMethodField(
+        help_text="true while the current user may still approve or reject this leave."
     )
 
     class Meta:
@@ -35,27 +47,59 @@ class LeaveSerializer(serializers.ModelSerializer):
             "status",
             "approved_by",
             "approved_by_name",
+            "deleted_by",
+            "deleted_by_name",
+            "deleted_at",
             "created_at",
+            "can_modify",
+            "can_review",
         ]
         # Clients can never set these; the server controls them.
-        read_only_fields = ["id", "status", "approved_by", "created_at"]
+        read_only_fields = [
+            "id",
+            "status",
+            "approved_by",
+            "deleted_by",
+            "deleted_at",
+            "created_at",
+        ]
         extra_kwargs = {"reason": {"max_length": 1000}}
 
+    def _user(self):
+        request = self.context.get("request")
+        return getattr(request, "user", None)
+
+    def get_can_modify(self, obj):
+        user = self._user()
+        return bool(user and user.is_authenticated and services.can_modify_leave(obj, user))
+
+    def get_can_review(self, obj):
+        user = self._user()
+        return bool(user and user.is_authenticated and services.can_review_leave(obj, user))
+
     def validate(self, attrs):
-        start_date = attrs["start_date"]
-        end_date = attrs["end_date"]
+        instance = self.instance  # None when creating, the Leave when editing
+        start_date = attrs.get("start_date", instance.start_date if instance else None)
+        end_date = attrs.get("end_date", instance.end_date if instance else None)
 
         errors = {}
         if start_date > end_date:
             errors["end_date"] = "End date must be on or after the start date."
-        if start_date < timezone.localdate():
+
+        # Past dates are refused for new leaves and when the start date is being
+        # changed. Editing only the reason of a leave that already started is fine.
+        start_changed = instance is None or start_date != instance.start_date
+        if start_changed and start_date < timezone.localdate():
             errors["start_date"] = "Start date cannot be in the past."
         if errors:
             raise serializers.ValidationError(errors)
 
-        employee = self.context["request"].user
+        employee = instance.employee if instance else self.context["request"].user
         conflict = services.find_overlapping_leaves(
-            employee, start_date, end_date
+            employee,
+            start_date,
+            end_date,
+            exclude_leave_id=instance.pk if instance else None,
         ).first()
         if conflict:
             raise serializers.ValidationError(services.overlap_message(conflict))
@@ -66,4 +110,9 @@ class LeaveSerializer(serializers.ModelSerializer):
         # The employee always comes from the token, never from the request body.
         return services.create_leave(
             employee=self.context["request"].user, **validated_data
+        )
+
+    def update(self, instance, validated_data):
+        return services.update_leave(
+            leave_id=instance.pk, actor=self.context["request"].user, **validated_data
         )

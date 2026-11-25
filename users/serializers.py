@@ -1,6 +1,10 @@
 from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
 from rest_framework import serializers
+from rest_framework.exceptions import PermissionDenied
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+
+from .enums import Role
 
 User = get_user_model()
 
@@ -43,3 +47,32 @@ class RegisterSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         # create_user() hashes the password.
         return User.objects.create_user(**validated_data)
+
+
+class _RoleRestrictedTokenSerializer(TokenObtainPairSerializer):
+    """
+    Login that only succeeds for users whose role is in `allowed_roles`.
+
+    Credentials are checked first (wrong password -> 401 as usual). Only then
+    is the role checked, so a wrong-portal attempt gets a clear 403 message.
+    """
+
+    allowed_roles = ()
+    wrong_portal_message = "You are not allowed to log in here."
+
+    def validate(self, attrs):
+        data = super().validate(attrs)  # raises 401-style error on bad credentials
+        if self.user.role not in self.allowed_roles:
+            raise PermissionDenied(self.wrong_portal_message)
+        data["user"] = UserSerializer(self.user).data
+        return data
+
+
+class EmployeeTokenObtainPairSerializer(_RoleRestrictedTokenSerializer):
+    allowed_roles = (Role.EMPLOYEE,)
+    wrong_portal_message = "This is the employee login. Managers must use the manager login."
+
+
+class ManagerTokenObtainPairSerializer(_RoleRestrictedTokenSerializer):
+    allowed_roles = (Role.MANAGER, Role.ADMIN)
+    wrong_portal_message = "This is the manager login. Employees must use the employee login."

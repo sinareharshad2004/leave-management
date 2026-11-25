@@ -13,6 +13,9 @@ class Leave(models.Model):
         PENDING = "PENDING", "Pending"
         APPROVED = "APPROVED", "Approved"
         REJECTED = "REJECTED", "Rejected"
+        # The owner deleted their own PENDING leave. The row is kept (soft delete)
+        # so there is a record of who deleted it and when.
+        DELETED = "DELETED", "Deleted"
 
     employee = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -34,6 +37,15 @@ class Leave(models.Model):
         blank=True,
         related_name="reviewed_leaves",
     )
+    # Filled only when the owner deletes their own PENDING leave (status DELETED).
+    deleted_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="deleted_leaves",
+    )
+    deleted_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

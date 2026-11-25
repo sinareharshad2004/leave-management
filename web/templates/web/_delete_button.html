@@ -1,0 +1,4 @@
+{# One button per own leave: enabled only while the leave is PENDING. #}
+<form class="inline" method="post" action="{% url 'web-delete' l.id %}">{% csrf_token %}<input type="hidden" name="next" value="{{ next }}">
+  <button type="submit" class="no" id="delete-{{ l.id }}"{% if not l.can_delete %} disabled title="Already {{ l.get_status_display|lower }}: this leave can no longer be changed"{% endif %}>Delete</button>
+</form>

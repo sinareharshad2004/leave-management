@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}Leave Management{% endblock %}</title>
+<style>
+  body{font-family:system-ui,sans-serif;margin:0;background:#f4f6f8;color:#1f2937}
+  header{background:#1f3a5f;color:#fff;padding:12px 24px;display:flex;justify-content:space-between;align-items:center}
+  header a{color:#fff;text-decoration:none;margin-left:16px}
+  main{max-width:960px;margin:24px auto;padding:0 16px}
+  .card{background:#fff;border-radius:8px;padding:20px;margin-bottom:20px;box-shadow:0 1px 3px rgba(0,0,0,.1)}
+  label{display:block;margin:10px 0 4px;font-weight:600}
+  input,select,textarea{width:100%;padding:8px;border:1px solid #cbd5e1;border-radius:6px;box-sizing:border-box}
+  button,.btn{background:#1f3a5f;color:#fff;border:0;padding:8px 16px;border-radius:6px;cursor:pointer;text-decoration:none;display:inline-block}
+  button.ok{background:#15803d} button.no{background:#b91c1c}
+  button:disabled{opacity:.4;cursor:not-allowed}
+  .hint{color:#6b7280;font-size:12px}
+  table{width:100%;border-collapse:collapse} th,td{text-align:left;padding:8px;border-bottom:1px solid #e5e7eb;font-size:14px}
+  .msg{padding:10px 14px;border-radius:6px;margin-bottom:12px}
+  .msg.success{background:#dcfce7} .msg.error{background:#fee2e2}
+  .tag{padding:2px 8px;border-radius:10px;font-size:12px}
+  .DELETED{background:#e5e7eb;color:#4b5563}.PENDING{background:#fef3c7}.APPROVED{background:#dcfce7}.REJECTED{background:#fee2e2}
+  .row{display:flex;gap:16px;flex-wrap:wrap}.row>*{flex:1;min-width:220px}
+  form.inline{display:inline}
+</style>
+</head>
+<body>
+<header>
+  <strong>Leave Management</strong>
+  <nav>
+    {% if user.is_authenticated %}{{ user.name }} ({{ user.role }})<a href="{% url 'web-logout' %}">Logout</a>
+    {% else %}<a href="{% url 'web-login' %}">Login</a>{% endif %}
+  </nav>
+</header>
+<main>
+  {% for message in messages %}<div class="msg {{ message.tags }}">{{ message }}</div>{% endfor %}
+  {% block content %}{% endblock %}
+</main>
+</body>
+</html>

@@ -1,0 +1,10 @@
+<form method="post">{% csrf_token %}
+  <div class="row">
+    <div><label>Leave type</label>
+      <select name="leave_type">{% for value, label in form_leave_types %}<option value="{{ value }}" {% if values.leave_type == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
+    <div><label>Start date</label><input type="date" name="start_date" value="{{ values.start_date }}" required></div>
+    <div><label>End date</label><input type="date" name="end_date" value="{{ values.end_date }}" required></div>
+  </div>
+  <label>Reason</label><textarea name="reason" rows="3" required>{{ values.reason }}</textarea>
+  <p><button type="submit">Submit request</button></p>
+</form>

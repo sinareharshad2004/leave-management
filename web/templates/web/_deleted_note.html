@@ -1,0 +1,1 @@
+{% if l.status == "DELETED" %}<br><small>Deleted by {{ l.deleted_by.name|default:"-" }}{% if l.deleted_at %} on {{ l.deleted_at|date:"d M Y, H:i" }}{% endif %}</small>{% endif %}

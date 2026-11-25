@@ -1,0 +1,18 @@
+{% extends "web/base.html" %}
+{% block content %}
+<div class="card">
+  <h2>Request leave</h2>
+  {% include "web/_leave_form.html" %}
+</div>
+<div class="card">
+  <h2>My leave requests</h2>
+  {% include "web/_filters.html" %}
+  <table><tr><th>Type</th><th>From</th><th>To</th><th>Reason</th><th>Status</th><th>Decided by</th><th>Action</th></tr>
+  {% for l in page %}<tr><td>{{ l.get_leave_type_display }}</td><td>{{ l.start_date }}</td><td>{{ l.end_date }}</td><td>{{ l.reason }}</td>
+    <td><span class="tag {{ l.status }}">{{ l.get_status_display }}</span>{% include "web/_deleted_note.html" %}</td><td>{{ l.approved_by.name|default:"-" }}</td>
+    <td>{% include "web/_delete_button.html" %}</td></tr>
+  {% empty %}<tr><td colspan="7">No leave requests found.</td></tr>{% endfor %}</table>
+  <p class="hint">Delete is available only while a leave is still pending. A deleted leave is kept in the list (marked Deleted) for your records. Approved, rejected or deleted leaves cannot be changed.</p>
+  {% include "web/_pager.html" %}
+</div>
+{% endblock %}

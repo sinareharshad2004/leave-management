@@ -1,0 +1,5 @@
+<p style="margin-top:12px">
+  {% if page.has_previous %}<a href="?{{ f.querystring }}&{{ f.prefix }}page={{ page.previous_page_number }}">&laquo; Previous</a>{% endif %}
+  Page {{ page.number }} of {{ page.paginator.num_pages }} ({{ page.paginator.count }} total)
+  {% if page.has_next %}<a href="?{{ f.querystring }}&{{ f.prefix }}page={{ page.next_page_number }}">Next &raquo;</a>{% endif %}
+</p>

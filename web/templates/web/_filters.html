@@ -1,0 +1,13 @@
+<form method="get" class="row" style="align-items:end;margin-bottom:12px">
+  {# keep the other table's filters/page when this table's filter is applied #}
+  {% for key, value in f.other_params %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endfor %}
+  <div><label>Status</label><select name="{{ f.prefix }}status"><option value="">All</option>
+    {% for v, l in statuses %}<option value="{{ v }}" {% if f.status == v %}selected{% endif %}>{{ l }}</option>{% endfor %}</select></div>
+  <div><label>Leave type</label><select name="{{ f.prefix }}leave_type"><option value="">All</option>
+    {% for v, l in leave_types %}<option value="{{ v }}" {% if f.leave_type == v %}selected{% endif %}>{{ l }}</option>{% endfor %}</select></div>
+  {% if show_employee %}<div><label>Employee</label><select name="{{ f.prefix }}employee"><option value="">All</option>
+    {% for e in employees %}<option value="{{ e.id }}" {% if f.employee == e.id|stringformat:"s" %}selected{% endif %}>{{ e.name }}</option>{% endfor %}</select></div>{% endif %}
+  <div><label>Order by</label><select name="{{ f.prefix }}ordering">
+    {% for v, l in orderings %}<option value="{{ v }}" {% if f.ordering == v %}selected{% endif %}>{{ l }}</option>{% endfor %}</select></div>
+  <div><button type="submit">Apply</button> <a href="?{{ f.reset_query }}">Reset</a></div>
+</form>

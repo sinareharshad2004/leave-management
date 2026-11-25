@@ -60,9 +60,10 @@ leave_management/
 │   └── tests/
 ├── leaves/            # leave domain
 │   ├── models.py      #   Leave (+ DB check constraint + indexes)
-│   ├── services.py    #   business rules (overlap, approve, reject, delete)
+│   ├── selectors.py   #   WHO can see WHICH leaves (queryset-level authorization)
+│   ├── services.py    #   business rules (create, edit, delete, approve, reject, overlap)
 │   ├── serializers.py #   input validation (dates, overlap)
-│   ├── permissions.py #   CannotReviewOwnLeave, IsLeaveOwnerOrAdmin
+│   ├── permissions.py #   CannotReviewOwnLeave, IsLeaveOwner
 │   ├── filters.py     #   ?status= &leave_type= &employee=
 │   ├── views.py       #   thin LeaveViewSet
 │   └── tests/
@@ -80,16 +81,19 @@ Layering: **views** handle HTTP -> **serializers** validate input ->
 | Method | URL | Who | Description |
 | --- | --- | --- | --- |
 | POST | `/api/auth/register/` | Public | Register (always created as EMPLOYEE) |
-| POST | `/api/auth/login/` | Public | Body: `email`, `password` -> `access` + `refresh` JWT |
+| POST | `/api/auth/login/` | Public | Body: `email`, `password` -> `access` + `refresh` JWT (any role) |
+| POST | `/api/auth/employee/login/` | Public | Employee-only login. Managers/admins get 403 |
+| POST | `/api/auth/manager/login/` | Public | Manager/admin-only login. Employees get 403 |
 | POST | `/api/auth/token/refresh/` | Public | Body: `refresh` -> new `access` |
 | GET | `/api/auth/me/` | Logged in | Current user |
-| POST | `/api/leaves/` | Logged in | Create leave (status starts as PENDING) |
-| GET | `/api/leaves/` | Logged in | Employee: own leaves. Manager/Admin: all leaves |
+| POST | `/api/leaves/` | Employee, Manager | Create your own leave (status starts as PENDING). Admins get 403 |
+| GET | `/api/leaves/` | Logged in | Employee: own. Manager: employees' + own. Admin: all (managers' too) |
 | GET | `/api/leaves/{id}/` | Logged in | Same visibility rule as the list |
-| DELETE | `/api/leaves/{id}/` | Owner / Admin | Only while the leave is PENDING |
-| GET | `/api/leaves/pending/` | Manager, Admin | Pending leaves of *other* people |
-| PATCH | `/api/leaves/{id}/approve/` | Manager, Admin | Approve a PENDING leave |
-| PATCH | `/api/leaves/{id}/reject/` | Manager, Admin | Reject a PENDING leave |
+| PATCH | `/api/leaves/{id}/` | Owner only | Edit your leave, only while PENDING (else **409**) |
+| DELETE | `/api/leaves/{id}/` | Owner only | Only while PENDING (else **409**). **Soft delete:** the row stays, status becomes `DELETED`, and `deleted_by` / `deleted_at` are recorded |
+| GET | `/api/leaves/pending/` | Manager, Admin | Pending leaves *you* can review (not your own) |
+| PATCH | `/api/leaves/{id}/approve/` | Manager, Admin | Approve a PENDING leave. Managers: employee leaves only. Admin: any |
+| PATCH | `/api/leaves/{id}/reject/` | Manager, Admin | Reject a PENDING leave (same rule as approve) |
 | GET | `/api/users/` | Admin | List users (`?role=`, `?search=`) |
 
 Send the token as `Authorization: Bearer <access>`.
@@ -115,6 +119,28 @@ curl -X POST http://localhost:8000/api/leaves/ \
 401 not logged in · 403 not allowed · 404 not found / not yours ·
 409 the leave is not PENDING any more.
 
+### Web pages (open in the browser)
+| URL | Who |
+| --- | --- |
+| `http://127.0.0.1:8000/` | Redirects to the login page |
+| `/login/` | ONE login page for everyone. Employees land on `/employee/`, managers on `/manager/` |
+| `/employee/` | Employee: request leave, see own leaves, **Delete** button (enabled only while PENDING) |
+| `/manager/` | Manager: request own leave, then **two tables**: **Own leave** (with Delete) and **Employee leave** (with Approve/Reject). Each table has its own filters and paging. Admin: one table with everything, including managers' leaves |
+| `/employee/register/` | Any number of employees can register |
+| `/manager/register/` | Only ONE manager can register; closed once a manager exists |
+| `/admin/` | Admin: create users and set their Role |
+
+### Two separate logins (API)
+* **Employee login:** `POST /api/auth/employee/login/` - use it to create leaves
+  (`POST /api/leaves/`) and view your own. Employees can never approve or reject (403).
+* **Manager login:** `POST /api/auth/manager/login/` - use it to see pending leaves
+  (`GET /api/leaves/pending/`) and approve/reject
+  (`PATCH /api/leaves/{id}/approve/` or `/reject/`).
+* Logging in on the wrong portal returns **403**; a wrong password returns **401**.
+* Both return `access`, `refresh` and a `user` object. Send `Authorization: Bearer <access>`.
+* Security does not depend on which portal was used: every approve/reject
+  endpoint also checks the role in the token.
+
 ### Creating a manager
 Registration always creates an EMPLOYEE so nobody can make themselves admin.
 To promote someone, log in to `/admin/` as the superuser and change their
@@ -128,12 +154,26 @@ To promote someone, log in to `/admin/` as the superuser and change their
   APPROVED leaves when date ranges share any day (end date is inclusive).
   REJECTED leaves do not block new requests.
 * **Start date** cannot be in the past (today is allowed).
-* **Who sees what:** employees see only their own leaves. Managers and admins see
-  all leaves (the model has no team/department, so there is nothing to narrow it by).
+* **Who sees what** (`leaves/selectors.py`, applied in the database query):
+  employees see only their own leaves; managers see employees' leaves + their own
+  (not other managers'); admins see every leave, including managers' leaves.
 * **`approved_by`** stores the reviewer for both approve *and* reject decisions.
-* **Nobody can review their own leave**, including admins.
-* **Delete:** owner (or admin) can delete a leave only while it is PENDING.
-* Approved/rejected leaves are final: approve, reject and delete return **409**.
+* **Employees and managers create their own leave.** Admins cannot create leave.
+* **Who approves what:** an employee's leave is approved/rejected by a manager or an
+  admin. A **manager's leave is approved/rejected by an admin only.**
+* **Nobody can review their own leave.**
+* **Edit and delete:** only the owner, and only while the leave is PENDING. Admins
+  and managers can view other people's leaves but cannot change or delete them.
+* **Delete is a soft delete.** When an employee or manager deletes their own pending leave,
+  nothing is removed from the database. The leave gets status `DELETED` and stores who
+  deleted it (`deleted_by`) and when (`deleted_at`). It stays visible in the lists (tagged
+  "Deleted", with the name of who deleted it), no longer blocks the calendar, and disappears
+  from the pending inbox. It can be filtered with `?status=DELETED`.
+* **Approved/rejected/deleted leaves are final:** edit, delete, approve and reject all return **409**.
+* **Button state:** every leave in the API carries `can_modify` (owner may still edit or
+  delete it) and `can_review` (the current user may still approve or reject it). Both
+  become `false` once a decision is made. The web pages use the same rules to disable the
+  buttons; the server enforces them again, so a disabled button cannot be bypassed.
 
 ---
 
@@ -154,8 +194,8 @@ Three layers, each with a job:
 Views contain no business rules.
 
 **3. Where is authorization?**
-* Role checks: `IsManagerOrAdmin`, `IsAdminRole` (`users/permissions.py`).
-* Object checks: `CannotReviewOwnLeave`, `IsLeaveOwnerOrAdmin` (`leaves/permissions.py`).
+* Role checks: `IsManagerOrAdmin`, `IsEmployeeOrManager`, `IsAdminRole` (`users/permissions.py`).
+* Object checks: `CannotReviewOwnLeave`, `IsLeaveOwner` (`leaves/permissions.py`), plus the role rules in `leaves/services.py`.
 * Data scope: `LeaveViewSet.get_queryset()`.
 * `get_permissions()` maps each action to its permission classes, and the default is `IsAuthenticated`.
 
@@ -169,8 +209,8 @@ each). `prefetch_related` would be for reverse/many-to-many relations. A test
 
 **5. How is other employees' data protected?**
 At the queryset level: for an employee, `get_queryset()` filters
-`employee=request.user`, so every action (list, retrieve, delete, ...) works
-only on their rows. Another employee's id gives **404**, not data. The employee
+`employee=request.user` (see `selectors.visible_leaves`), so every action (list,
+retrieve, edit, delete, ...) works only on their rows. Another employee's id gives **404**, not data. The employee
 on a new leave comes from the JWT user, never from the request body. Even
 `?employee=<other id>` returns nothing because the filter runs on the already
 restricted queryset.
@@ -210,10 +250,13 @@ and rolls everything back if any step fails, so we never end up with half-update
 
 `pytest` runs tests for: login, unauthorized access (401), employee create,
 employee sees only own leaves, employee cannot approve/reject, manager can
-approve/reject, manager cannot approve own leave, admin sees all, overlapping
-leave rejected (several shapes), invalid dates rejected, approved/rejected leave
-cannot be modified again (409), delete rules, filtering/search/ordering/pagination,
-and the no-N+1 query check.
+approve/reject, manager cannot approve own leave, manager cannot approve another
+manager's leave, admin approves a manager's leave, manager creates own leave, admin sees
+all (managers' too), overlapping leave rejected (several shapes), invalid dates
+rejected, approved/rejected leave cannot be edited, deleted or reviewed again (409),
+soft delete (row kept, who/when recorded), the two manager tables and their independent
+filters, the `can_modify` / `can_review` button flags, disabled buttons on the web pages,
+filtering/search/ordering/pagination, and the no-N+1 query check.
 
 ## 7. Possible next steps
 Swagger docs (drf-spectacular), Docker for the app, PostgreSQL `ExclusionConstraint`,

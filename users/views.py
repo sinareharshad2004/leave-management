@@ -2,9 +2,15 @@ from django.contrib.auth import get_user_model
 from rest_framework import generics, status
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
+from rest_framework_simplejwt.views import TokenObtainPairView
 
 from .permissions import IsAdminRole
-from .serializers import RegisterSerializer, UserSerializer
+from .serializers import (
+    EmployeeTokenObtainPairSerializer,
+    ManagerTokenObtainPairSerializer,
+    RegisterSerializer,
+    UserSerializer,
+)
 
 User = get_user_model()
 
@@ -41,3 +47,15 @@ class UserListView(generics.ListAPIView):
     filterset_fields = ["role"]
     search_fields = ["name", "email"]
     ordering_fields = ["id", "name", "email"]
+
+
+class EmployeeLoginView(TokenObtainPairView):
+    """POST /api/auth/employee/login/ - only EMPLOYEE accounts can log in here."""
+
+    serializer_class = EmployeeTokenObtainPairSerializer
+
+
+class ManagerLoginView(TokenObtainPairView):
+    """POST /api/auth/manager/login/ - only MANAGER (and ADMIN) accounts can log in here."""
+
+    serializer_class = ManagerTokenObtainPairSerializer

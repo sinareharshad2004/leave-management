@@ -39,7 +39,7 @@ class Migration(migrations.Migration):
                             ("APPROVED", "Approved"),
                             ("REJECTED", "Rejected"),
                         ],
-                        default="Rejected",
+                        default="PENDING",
                         max_length=10,
                     ),
                 ),
@@ -64,7 +64,7 @@ class Migration(migrations.Migration):
                 ),
             ],
             options={
-                "ordering": ["created_at", "id"],
+                "ordering": ["-created_at", "-id"],
             },
         ),
         migrations.AddIndex(

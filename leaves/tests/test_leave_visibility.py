@@ -119,3 +119,47 @@ def test_list_has_no_n_plus_one_queries(
     assert first["employee"]["name"]
     assert first["employee"]["email"]
     assert first["approved_by_name"] == manager.name
+
+
+# ----------------------------------------------------- manager / admin scopes
+def test_manager_sees_employee_leaves_and_own_but_not_other_managers(
+    client_for, manager, other_manager, employee, make_leave
+):
+    employee_leave = make_leave(employee, start=1)
+    own = make_leave(manager, start=1)
+    other_managers = make_leave(other_manager, start=1)
+
+    response = client_for(manager).get(URL)
+
+    assert ids(response) == {employee_leave.id, own.id}
+    assert other_managers.id not in ids(response)
+
+
+def test_manager_cannot_open_another_managers_leave(client_for, manager, other_manager, make_leave):
+    leave = make_leave(other_manager)
+    assert client_for(manager).get(f"{URL}{leave.id}/").status_code == 404
+
+
+def test_manager_filtering_by_other_manager_id_returns_nothing(
+    client_for, manager, other_manager, make_leave
+):
+    make_leave(other_manager)
+    response = client_for(manager).get(f"{URL}?employee={other_manager.id}")
+    assert response.status_code == 200
+    assert response.data["count"] == 0
+
+
+def test_employee_cannot_see_a_managers_leave(client_for, employee, manager, make_leave):
+    leave = make_leave(manager)
+    assert ids(client_for(employee).get(URL)) == set()
+    assert client_for(employee).get(f"{URL}{leave.id}/").status_code == 404
+
+
+def test_admin_can_access_managers_leaves_too(client_for, admin_user, manager, employee, make_leave):
+    manager_leave = make_leave(manager, start=1)
+    employee_leave = make_leave(employee, start=1)
+    client = client_for(admin_user)
+
+    assert ids(client.get(URL)) == {manager_leave.id, employee_leave.id}
+    assert client.get(f"{URL}{manager_leave.id}/").status_code == 200
+    assert ids(client.get(f"{URL}?employee={manager.id}")) == {manager_leave.id}

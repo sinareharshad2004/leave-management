@@ -1,0 +1,13 @@
+{% extends "web/base.html" %}
+{% block content %}
+{% if can_request %}
+<div class="card">
+  <h2>Request my own leave</h2>
+  <p class="hint">A manager's leave is approved or rejected by an admin only.</p>
+  {% include "web/_leave_form.html" %}
+</div>
+{% endif %}
+{% for s in sections %}
+  {% include "web/_leave_table.html" %}
+{% endfor %}
+{% endblock %}

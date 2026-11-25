@@ -10,10 +10,13 @@ class CannotReviewOwnLeave(BasePermission):
         return obj.employee_id != request.user.id
 
 
-class IsLeaveOwnerOrAdmin(BasePermission):
-    """Object-level rule: only the owner (or an admin) may delete a leave."""
+class IsLeaveOwner(BasePermission):
+    """
+    Object-level rule: only the person who requested a leave may edit or delete it.
+    Admins can SEE every leave but cannot change someone else's request.
+    """
 
-    message = "You can only delete your own leave."
+    message = "You can only change your own leave."
 
     def has_object_permission(self, request, view, obj):
-        return request.user.is_admin or obj.employee_id == request.user.id
+        return obj.employee_id == request.user.id

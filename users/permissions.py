@@ -19,3 +19,23 @@ class IsManagerOrAdmin(BasePermission):
     def has_permission(self, request, view):
         user = request.user
         return bool(user and user.is_authenticated and user.can_review_leaves)
+
+
+class IsEmployeeRole(BasePermission):
+    """Allow access only to users whose role is EMPLOYEE (e.g. creating leave)."""
+
+    message = "Only employees can create leave requests."
+
+    def has_permission(self, request, view):
+        user = request.user
+        return bool(user and user.is_authenticated and user.role == "EMPLOYEE")
+
+
+class IsEmployeeOrManager(BasePermission):
+    """Roles that can apply for leave: EMPLOYEE and MANAGER (not ADMIN)."""
+
+    message = "Only employees and managers can create leave requests."
+
+    def has_permission(self, request, view):
+        user = request.user
+        return bool(user and user.is_authenticated and user.role in ("EMPLOYEE", "MANAGER"))

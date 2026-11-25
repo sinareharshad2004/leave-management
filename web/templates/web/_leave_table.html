@@ -1,0 +1,17 @@
+<div class="card">
+  <h2>{{ s.title }}</h2>
+  {% if s.hint %}<p class="hint">{{ s.hint }}</p>{% endif %}
+  {% include "web/_filters.html" with f=s.f show_employee=s.show_employee %}
+  <table><tr><th>Employee</th><th>Type</th><th>From</th><th>To</th><th>Reason</th><th>Status</th><th>Action</th></tr>
+  {% for l in s.page %}<tr><td>{{ l.employee.name }}{% if l.is_mine %} <small>(you)</small>{% elif l.employee.role == "MANAGER" %} <small>(manager)</small>{% endif %}</td><td>{{ l.get_leave_type_display }}</td><td>{{ l.start_date }}</td><td>{{ l.end_date }}</td><td>{{ l.reason }}</td>
+    <td><span class="tag {{ l.status }}">{{ l.get_status_display }}</span>{% if l.approved_by %}<br><small>by {{ l.approved_by.name }}</small>{% endif %}{% include "web/_deleted_note.html" %}</td>
+    <td>
+    {% if l.is_mine %}
+      {% include "web/_delete_button.html" %}
+    {% elif l.has_review %}
+      <form class="inline" method="post" action="{% url 'web-approve' l.id %}">{% csrf_token %}<input type="hidden" name="next" value="{{ next }}"><button class="ok" id="approve-{{ l.id }}"{% if not l.can_review %} disabled{% endif %}>Approve</button></form>
+      <form class="inline" method="post" action="{% url 'web-reject' l.id %}">{% csrf_token %}<input type="hidden" name="next" value="{{ next }}"><button class="no" id="reject-{{ l.id }}"{% if not l.can_review %} disabled{% endif %}>Reject</button></form>
+    {% else %}-{% endif %}</td></tr>
+  {% empty %}<tr><td colspan="7">{{ s.empty }}</td></tr>{% endfor %}</table>
+  {% include "web/_pager.html" with page=s.page f=s.f %}
+</div>
