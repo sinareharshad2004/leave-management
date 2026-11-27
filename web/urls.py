@@ -14,6 +14,7 @@ urlpatterns = [
     path("manager/", views.manager_dashboard, name="web-manager-dashboard"),
     path("manager/leaves/<int:leave_id>/approve/", views.approve, name="web-approve"),
     path("manager/leaves/<int:leave_id>/reject/", views.reject, name="web-reject"),
+    path("notifications/<int:notification_id>/dismiss/", views.dismiss_notification, name="web-dismiss-notification"),
     path("leaves/<int:leave_id>/delete/", views.delete, name="web-delete"),
     path("logout/", views.logout_view, name="web-logout"),
 ]

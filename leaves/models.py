@@ -64,3 +64,25 @@ class Leave(models.Model):
 
     def __str__(self):
         return f"{self.employee_id} {self.leave_type} {self.start_date} -> {self.end_date} ({self.status})"
+
+
+class LeaveNotification(models.Model):
+    recipient = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="leave_notifications",
+    )
+    leave = models.ForeignKey(
+        Leave,
+        on_delete=models.CASCADE,
+        related_name="notifications",
+    )
+    message = models.CharField(max_length=255)
+    created_at = models.DateTimeField(auto_now_add=True)
+    read_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+
+    def __str__(self):
+        return f"Notification for {self.recipient_id}: {self.message}"

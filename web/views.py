@@ -6,14 +6,14 @@ from django.contrib import messages
 from django.contrib.auth import get_user_model, login, logout
 from django.contrib.auth.forms import AuthenticationForm
 from django.core.paginator import Paginator
-from django.db import transaction
-from django.shortcuts import redirect, render
+from django.shortcuts import get_object_or_404, redirect, render
+from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 from rest_framework.exceptions import APIException
 
 from leaves import selectors, services
-from leaves.models import Leave
+from leaves.models import Leave, LeaveNotification
 from leaves.serializers import LeaveSerializer
 from users.enums import Role
 
@@ -45,10 +45,6 @@ def _error_text(exc):
     return str(detail)
 
 
-def manager_exists():
-    return User.objects.filter(role=Role.MANAGER).exists()
-
-
 def home_for(user):
     return "web-manager-dashboard" if user.can_review_leaves else "web-employee-dashboard"
 
@@ -70,11 +66,7 @@ def login_view(request):
         user = form.get_user()
         login(request, user)
         return redirect(home_for(user))
-    return render(
-        request,
-        "web/login.html",
-        {"form": form, "manager_registration_open": not manager_exists()},
-    )
+    return render(request, "web/login.html", {"form": form})
 
 
 def legacy_login(request):
@@ -99,20 +91,13 @@ def employee_register(request):
 
 
 def manager_register(request):
-    """Only ONE manager can ever self-register; after that this page is closed."""
+    """Allow multiple managers to register; admin accounts remain restricted."""
     if request.user.is_authenticated:
         return redirect("web-home")
-    if manager_exists():
-        messages.error(request, "A manager is already registered. Manager sign-up is closed.")
-        return redirect("web-login")
 
     form = ManagerRegisterForm(request.POST or None)
     if request.method == "POST" and form.is_valid():
-        with transaction.atomic():
-            if manager_exists():  # re-check right before saving
-                messages.error(request, "A manager is already registered. Manager sign-up is closed.")
-                return redirect("web-login")
-            user = form.save()
+        user = form.save()
         login(request, user)
         messages.success(request, "Manager account created. You are logged in as the manager.")
         return redirect("web-manager-dashboard")
@@ -367,6 +352,20 @@ def approve(request, leave_id):
 @require_POST
 def reject(request, leave_id):
     return _review(request, leave_id, services.reject_leave, "Leave rejected.")
+
+
+@any_role_required
+@require_POST
+def dismiss_notification(request, notification_id):
+    notification = get_object_or_404(
+        LeaveNotification,
+        pk=notification_id,
+        recipient=request.user,
+        read_at__isnull=True,
+    )
+    notification.read_at = timezone.now()
+    notification.save(update_fields=["read_at"])
+    return _redirect_back(request, home_for(request.user))
 
 
 @any_role_required

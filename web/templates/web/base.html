@@ -19,6 +19,8 @@
   table{width:100%;border-collapse:collapse} th,td{text-align:left;padding:8px;border-bottom:1px solid #e5e7eb;font-size:14px}
   .msg{padding:10px 14px;border-radius:6px;margin-bottom:12px}
   .msg.success{background:#dcfce7} .msg.error{background:#fee2e2}
+  .notice{position:relative;background:#fff7ed;border:1px solid #fdba74;border-radius:8px;padding:14px 44px 14px 16px;margin:0 0 12px;box-shadow:0 2px 8px #0002}
+  .notice button{position:absolute;right:8px;top:8px;padding:5px 9px}
   .tag{padding:2px 8px;border-radius:10px;font-size:12px}
   .DELETED{background:#e5e7eb;color:#4b5563}.PENDING{background:#fef3c7}.APPROVED{background:#dcfce7}.REJECTED{background:#fee2e2}
   .row{display:flex;gap:16px;flex-wrap:wrap}.row>*{flex:1;min-width:220px}
@@ -35,6 +37,11 @@
 </header>
 <main>
   {% for message in messages %}<div class="msg {{ message.tags }}">{{ message }}</div>{% endfor %}
+  {% for notification in leave_notifications %}
+  <div class="notice" role="alert">{{ notification.message }}
+    <form class="inline" method="post" action="{% url 'web-dismiss-notification' notification.id %}">{% csrf_token %}<button type="submit" aria-label="Dismiss notification">Dismiss</button></form>
+  </div>
+  {% endfor %}
   {% block content %}{% endblock %}
 </main>
 </body>

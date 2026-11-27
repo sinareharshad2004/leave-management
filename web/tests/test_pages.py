@@ -97,10 +97,10 @@ def test_register_rejects_duplicate_email_and_mismatched_password(employee):
     assert b"do not match" in response.content
 
 
-def test_manager_register_link_hidden_once_a_manager_exists(manager):
+def test_manager_register_link_remains_available_after_a_manager_exists(manager):
     page = Client().get("/login/").content
     assert b"Register as employee" in page
-    assert b"Register as manager" not in page
+    assert b"Register as manager" in page
 
 
 def test_registered_employee_can_log_out_and_log_in_again():
@@ -208,15 +208,15 @@ def test_first_manager_can_register_and_reach_manager_page():
     assert client.get("/manager/").status_code == 200
 
 
-def test_second_manager_cannot_register(manager):
+def test_multiple_managers_can_register(manager):
     from users.models import User
 
     client = Client()
-    assert b"Register as manager" not in client.get("/login/").content
+    assert b"Register as manager" in client.get("/login/").content
     response = _register(client, "/manager/register/", "second@example.com")
-    assert response.status_code == 302  # bounced to the manager login
-    assert not User.objects.filter(email="second@example.com").exists()
-    assert User.objects.filter(role="MANAGER").count() == 1
+    assert response.status_code == 302
+    assert User.objects.get(email="second@example.com").role == "MANAGER"
+    assert User.objects.filter(role="MANAGER").count() == 2
 
 
 def test_manager_registration_never_makes_an_employee_a_manager(employee):

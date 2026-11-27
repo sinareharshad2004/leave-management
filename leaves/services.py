@@ -16,6 +16,7 @@ Rules implemented here
 * Nobody can review their own leave.
 """
 from django.contrib.auth import get_user_model
+from django.core.mail import send_mail
 from django.db import transaction
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -24,7 +25,7 @@ from rest_framework.exceptions import PermissionDenied, ValidationError
 from users.enums import Role
 
 from .exceptions import LeaveStateConflict
-from .models import Leave
+from .models import Leave, LeaveNotification
 
 User = get_user_model()
 
@@ -195,16 +196,44 @@ def _review_leave(*, leave_id, reviewer, new_status):
     return leave
 
 
+def _notify_employee_of_decision(leave, reviewer):
+    decision = leave.status.lower()
+    message = (
+        f"Your {leave.get_leave_type_display()} leave request from {leave.start_date} "
+        f"to {leave.end_date} was {decision} by {reviewer.name}."
+    )
+    LeaveNotification.objects.create(
+        recipient=leave.employee,
+        leave=leave,
+        message=message,
+    )
+
+    def send_employee_email():
+        send_mail(
+            subject=f"Your leave request was {decision}",
+            message=message,
+            from_email=None,
+            recipient_list=[leave.employee.email],
+            fail_silently=True,
+        )
+
+    transaction.on_commit(send_employee_email)
+
+
 def approve_leave(*, leave_id, reviewer):
-    return _review_leave(
+    leave = _review_leave(
         leave_id=leave_id, reviewer=reviewer, new_status=Leave.Status.APPROVED
     )
+    _notify_employee_of_decision(leave, reviewer)
+    return leave
 
 
 def reject_leave(*, leave_id, reviewer):
-    return _review_leave(
+    leave = _review_leave(
         leave_id=leave_id, reviewer=reviewer, new_status=Leave.Status.REJECTED
     )
+    _notify_employee_of_decision(leave, reviewer)
+    return leave
 
 
 def delete_pending_leave(*, leave_id, actor):

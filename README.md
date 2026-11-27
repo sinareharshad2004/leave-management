@@ -127,7 +127,7 @@ curl -X POST http://localhost:8000/api/leaves/ \
 | `/employee/` | Employee: request leave, see own leaves, **Delete** button (enabled only while PENDING) |
 | `/manager/` | Manager: request own leave, then **two tables**: **Own leave** (with Delete) and **Employee leave** (with Approve/Reject). Each table has its own filters and paging. Admin: one table with everything, including managers' leaves |
 | `/employee/register/` | Any number of employees can register |
-| `/manager/register/` | Only ONE manager can register; closed once a manager exists |
+| `/manager/register/` | Any number of managers can register |
 | `/admin/` | Admin: create users and set their Role |
 
 ### Two separate logins (API)
@@ -141,10 +141,20 @@ curl -X POST http://localhost:8000/api/leaves/ \
 * Security does not depend on which portal was used: every approve/reject
   endpoint also checks the role in the token.
 
-### Creating a manager
-Registration always creates an EMPLOYEE so nobody can make themselves admin.
-To promote someone, log in to `/admin/` as the superuser and change their
-**Role** to MANAGER (or ADMIN).
+### Leave rejection notifications
+When a leave is approved or rejected, the reviewer sees a confirmation pop-up
+and the employee receives an in-app pop-up the next time they visit. An email
+is sent to the employee's registered address. Set the
+`EMAIL_*` values in `.env` to your SMTP provider's settings to deliver emails;
+with `DEBUG=True` and no SMTP backend configured, Django prints emails in the
+server terminal instead.
+
+### Creating managers and admins
+Employees register at `/employee/register/`; managers can register at
+`/manager/register/`, and multiple manager accounts are allowed. Admin
+accounts cannot be created through public registration. Create the first admin
+with `python manage.py createsuperuser`; an existing admin can create or promote
+users through `/admin/` and set their **Role**.
 
 ---
 
