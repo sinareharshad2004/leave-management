@@ -1,5 +1,10 @@
 {% extends "web/base.html" %}
 {% block content %}
+{% if user.is_admin %}
+<div class="card">
+  <a href="{% url 'web-manager-register' %}"><button type="button">Register Manager</button></a>
+</div>
+{% endif %}
 {% if can_request %}
 <div class="card">
   <h2>Request my own leave</h2>

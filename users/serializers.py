@@ -46,7 +46,7 @@ class RegisterSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         # create_user() hashes the password.
-        return User.objects.create_user(**validated_data)
+        return User.objects.create_user(role=Role.EMPLOYEE, **validated_data)
 
 
 class _RoleRestrictedTokenSerializer(TokenObtainPairSerializer):
@@ -76,3 +76,13 @@ class EmployeeTokenObtainPairSerializer(_RoleRestrictedTokenSerializer):
 class ManagerTokenObtainPairSerializer(_RoleRestrictedTokenSerializer):
     allowed_roles = (Role.MANAGER, Role.ADMIN)
     wrong_portal_message = "This is the manager login. Employees must use the employee login."
+
+class ManagerCreateSerializer(serializers.ModelSerializer):
+ 
+    password = serializers.CharField(write_only=True, min_length=8)
+    class Meta:
+        model = User
+        field = ["username", "email", "password"]
+
+    def create(self, validated_data):
+        return User.objects.create_user(role=Role.MANAGER, **validated_data)    

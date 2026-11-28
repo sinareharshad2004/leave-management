@@ -11,7 +11,7 @@ User = get_user_model()
 class EmployeeSummarySerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ["id", "name", "email", "role"]
+        fields = ["id", "name", "email", "role","review_comment"]
         read_only_fields = fields
 
 
@@ -94,6 +94,10 @@ class LeaveSerializer(serializers.ModelSerializer):
         if errors:
             raise serializers.ValidationError(errors)
 
+        if services.count_working_days(start_date, end_date) == 0:
+           raise serializers.ValidationError(
+               "This leave has no working days. Please select a valid date range."
+           )
         employee = instance.employee if instance else self.context["request"].user
         conflict = services.find_overlapping_leaves(
             employee,
@@ -116,3 +120,6 @@ class LeaveSerializer(serializers.ModelSerializer):
         return services.update_leave(
             leave_id=instance.pk, actor=self.context["request"].user, **validated_data
         )
+
+    def get_working_days(self, obj):
+        return services.count_working_days(obj.start_date, obj.end_date)

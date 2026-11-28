@@ -26,6 +26,7 @@ class Leave(models.Model):
     start_date = models.DateField()
     end_date = models.DateField()
     reason = models.TextField()
+    review_comment= models.TextField(blank=True, default="")
     status = models.CharField(
         max_length=10, choices=Status.choices, default=Status.PENDING
     )
@@ -86,3 +87,12 @@ class LeaveNotification(models.Model):
 
     def __str__(self):
         return f"Notification for {self.recipient_id}: {self.message}"
+class Holiday(models.Model):
+    date = models.DateField(unique=True)
+    name = models.CharField(max_length=100)
+
+    class Meta:
+        ordering = ["date"]
+
+    def __str__(self):
+        return f"{self.date} - {self.name}"

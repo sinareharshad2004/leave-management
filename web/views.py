@@ -10,7 +10,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
-from rest_framework.exceptions import APIException
+from rest_framework.exceptions import APIException, ValidationError
 
 from leaves import selectors, services
 from leaves.models import Leave, LeaveNotification
@@ -19,6 +19,9 @@ from users.enums import Role
 
 from .forms import EmployeeRegisterForm, ManagerRegisterForm
 
+from django.contrib import messages
+# from django.core.exceptions import ValidationError
+from leaves.services import approve_leave
 User = get_user_model()
 
 PAGE_SIZE = 10
@@ -90,24 +93,6 @@ def employee_register(request):
     )
 
 
-def manager_register(request):
-    """Allow multiple managers to register; admin accounts remain restricted."""
-    if request.user.is_authenticated:
-        return redirect("web-home")
-
-    form = ManagerRegisterForm(request.POST or None)
-    if request.method == "POST" and form.is_valid():
-        user = form.save()
-        login(request, user)
-        messages.success(request, "Manager account created. You are logged in as the manager.")
-        return redirect("web-manager-dashboard")
-    return render(
-        request,
-        "web/register.html",
-        {"form": form, "title": "Register as manager", "login_url": "web-login"},
-    )
-
-
 def logout_view(request):
     logout(request)
     return redirect("web-home")
@@ -129,7 +114,7 @@ def role_required(allowed_roles, login_name):
 employee_required = role_required((Role.EMPLOYEE,), "web-login")
 manager_required = role_required((Role.MANAGER, Role.ADMIN), "web-login")
 any_role_required = role_required((Role.EMPLOYEE, Role.MANAGER, Role.ADMIN), "web-login")
-
+admin_required = role_required((Role.ADMIN,), "web-login")
 
 def _apply_filters(request, queryset, *, by_employee, prefix=""):
     """
@@ -378,3 +363,28 @@ def delete(request, leave_id):
     except APIException as exc:
         messages.error(request, _error_text(exc))
     return _redirect_back(request, home_for(request.user))
+
+@admin_required
+def manager_register(request):
+    """Only a logged-in admin can create manager accounts."""
+    form = ManagerRegisterForm(request.POST or None)
+    if request.method == "POST" and form.is_valid():
+        user = form.save()          # no login(): the admin stays logged in
+        messages.success(request, f"Manager account created for {user.email}.")
+        return redirect("web-manager-register")
+    return render(
+        request,
+        "web/register.html",
+        {"form": form, "title": "Register a manager", "login_url": "web-login"},
+    )
+
+def _review(request, leave_id, service_function, done_text):
+    print("POST DATA:", dict(request.POST))
+    comment = request.POST.get("review_comment", "")
+    try:
+        service_function(leave_id=leave_id, reviewer=request.user, comment=comment)
+        messages.success(request, done_text)
+    except APIException as exc:
+        messages.error(request, _error_text(exc))
+    return _redirect_back(request, "web-manager-dashboard")
+ 

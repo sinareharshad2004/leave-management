@@ -2,6 +2,9 @@ from django.contrib import admin
 
 from .models import Leave
 
+from .models import Holiday
+
+admin.site.register(Holiday)
 
 @admin.register(Leave)
 class LeaveAdmin(admin.ModelAdmin):

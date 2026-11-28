@@ -5,7 +5,6 @@ from . import views
 urlpatterns = [
     path("", views.home, name="web-home"),
     path("login/", views.login_view, name="web-login"),
-    # old addresses keep working: they forward to the single login page
     path("employee/login/", views.legacy_login),
     path("manager/login/", views.legacy_login),
     path("employee/register/", views.employee_register, name="web-employee-register"),
@@ -17,4 +16,5 @@ urlpatterns = [
     path("notifications/<int:notification_id>/dismiss/", views.dismiss_notification, name="web-dismiss-notification"),
     path("leaves/<int:leave_id>/delete/", views.delete, name="web-delete"),
     path("logout/", views.logout_view, name="web-logout"),
+    path("managers/register/", views.manager_register, name="web-manager-register"),
 ]

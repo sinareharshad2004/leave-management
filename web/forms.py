@@ -1,7 +1,7 @@
 from django import forms
 from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
-
+from users.enums import Role
 User = get_user_model()
 
 
@@ -46,8 +46,9 @@ class EmployeeRegisterForm(forms.Form):
             role=self.role,
         )
 
-
 class ManagerRegisterForm(EmployeeRegisterForm):
-    """Same fields, but creates a MANAGER. The view allows it only while no manager exists."""
+     """Used only by the admin-only 'Register Manager' page."""
+     role=Role.MANAGER
 
-    role = "MANAGER"
+ 
+

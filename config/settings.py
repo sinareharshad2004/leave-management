@@ -148,3 +148,9 @@ SIMPLE_JWT = {
     "REFRESH_TOKEN_LIFETIME": timedelta(days=1),
     "AUTH_HEADER_TYPES": ("Bearer",),
 }
+
+LEAVE_LIMITS = {
+    "paid_leave": 2,
+    "sick_leave": 5,
+    "casual_leave": 4
+}

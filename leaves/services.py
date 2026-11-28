@@ -14,7 +14,12 @@ Rules implemented here
 * Employee leaves are reviewed by a manager or an admin.
 * A MANAGER's leave is reviewed by an ADMIN only.
 * Nobody can review their own leave.
+* Only APPROVED leaves use up the yearly limit, counted in working days.
+* Rejecting a leave needs a reason (review_comment); approving does not.
 """
+from datetime import timedelta
+
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.mail import send_mail
 from django.db import transaction
@@ -25,12 +30,15 @@ from rest_framework.exceptions import PermissionDenied, ValidationError
 from users.enums import Role
 
 from .exceptions import LeaveStateConflict
-from .models import Leave, LeaveNotification
+from .models import Holiday, Leave, LeaveNotification
 
 User = get_user_model()
 
 # Leaves in these statuses "block" the calendar. REJECTED and DELETED leaves do not.
 BLOCKING_STATUSES = (Leave.Status.PENDING, Leave.Status.APPROVED)
+
+# Only approved leaves use up the yearly limit.
+COUNTED_STATUSES = (Leave.Status.APPROVED,)
 
 # Roles that have their own leave balance and can apply for leave.
 LEAVE_APPLICANT_ROLES = (Role.EMPLOYEE, Role.MANAGER)
@@ -82,8 +90,6 @@ def find_overlapping_leaves(employee, start_date, end_date, exclude_leave_id=Non
 
     Two inclusive ranges overlap when each starts on/before the other ends:
         existing.start <= new.end  AND  existing.end >= new.start
-    Example: existing 10-12 Nov vs new 11-15 Nov -> 10 <= 15 and 12 >= 11 -> overlap.
-
     `exclude_leave_id` lets a leave be edited without clashing with itself.
     """
     queryset = Leave.objects.filter(
@@ -104,6 +110,69 @@ def overlap_message(conflict):
     )
 
 
+# ------------------------------------------------------ working days / limits
+def count_working_days(start_date, end_date):
+    """Days from start to end (inclusive) that are not Saturday, Sunday or a holiday."""
+    holidays = set(
+        Holiday.objects.filter(date__range=(start_date, end_date)).values_list(
+            "date", flat=True
+        )
+    )
+    days = 0
+    current = start_date
+    while current <= end_date:
+        if current.weekday() < 5 and current not in holidays:  # Monday=0 ... Friday=4
+            days += 1
+        current += timedelta(days=1)
+    return days
+
+
+def validate_leave_limit(employee, leave_type, start_date, end_date, exclude_id=None):
+    """
+    Refuse a request with no working days, or one that takes the employee over
+    the yearly limit for this leave type. Only APPROVED leaves are counted.
+    """
+    requested_days = count_working_days(start_date, end_date)
+    if requested_days == 0:
+        raise ValidationError(
+            {"non_field_errors": ["This leave has no working days (only weekends or holidays)."]}
+        )
+
+    limit_key = {
+        Leave.LeaveType.SICK: "sick_leave",
+        Leave.LeaveType.PAID: "paid_leave",
+        Leave.LeaveType.CASUAL: "casual_leave",
+    }.get(leave_type)
+    limit = getattr(settings, "LEAVE_LIMITS", {}).get(limit_key)
+    if limit is None:
+        return
+
+    counted_leaves = Leave.objects.filter(
+        employee=employee,
+        leave_type=leave_type,
+        status__in=COUNTED_STATUSES,
+        start_date__year=start_date.year,
+    )
+    if exclude_id is not None:
+        counted_leaves = counted_leaves.exclude(pk=exclude_id)
+
+    used_days = sum(
+        count_working_days(item.start_date, item.end_date) for item in counted_leaves
+    )
+    if used_days + requested_days > limit:
+        leave_label = Leave.LeaveType(leave_type).label
+        remaining_days = max(limit - used_days, 0)
+        raise ValidationError(
+            {
+                "leave_type": [
+                    f"{leave_label} leave limit is {limit} days. You have "
+                    f"{remaining_days} day(s) remaining, but this request is for "
+                    f"{requested_days} day(s)."
+                ]
+            }
+        )
+
+
 # ------------------------------------------------------------------- actions
 def create_leave(*, employee, leave_type, start_date, end_date, reason):
     """
@@ -111,8 +180,7 @@ def create_leave(*, employee, leave_type, start_date, end_date, reason):
 
     The serializer already checks overlap to give a friendly error, but two
     requests sent at the same moment could both pass that check. So we check
-    again inside a transaction after locking the employee's row; the second
-    request waits for the first one to commit and then sees its leave.
+    again inside a transaction after locking the employee's row.
     (On PostgreSQL select_for_update really locks; SQLite ignores it.)
     """
     if not can_create_leave(employee):
@@ -120,6 +188,8 @@ def create_leave(*, employee, leave_type, start_date, end_date, reason):
 
     with transaction.atomic():
         User.objects.select_for_update().get(pk=employee.pk)
+
+        validate_leave_limit(employee, leave_type, start_date, end_date)
 
         conflict = find_overlapping_leaves(employee, start_date, end_date).first()
         if conflict:
@@ -156,8 +226,13 @@ def update_leave(*, leave_id, actor, **changes):
 
         start_date = changes.get("start_date", leave.start_date)
         end_date = changes.get("end_date", leave.end_date)
+        leave_type = changes.get("leave_type", leave.leave_type)
         if start_date > end_date:
             raise ValidationError({"end_date": ["End date must be on or after the start date."]})
+
+        validate_leave_limit(
+            leave.employee, leave_type, start_date, end_date, exclude_id=leave.pk
+        )
 
         conflict = find_overlapping_leaves(
             leave.employee, start_date, end_date, exclude_leave_id=leave.pk
@@ -171,7 +246,7 @@ def update_leave(*, leave_id, actor, **changes):
     return leave
 
 
-def _review_leave(*, leave_id, reviewer, new_status):
+def _review_leave(*, leave_id, reviewer, new_status, comment=""):
     """Shared logic for approve / reject."""
     if not reviewer.can_review_leaves:
         raise PermissionDenied("Only managers or admins can review leaves.")
@@ -180,6 +255,8 @@ def _review_leave(*, leave_id, reviewer, new_status):
         # Lock the row. If two reviewers click "approve" together, the second
         # one waits here, then sees status != PENDING and gets a 409.
         leave = get_object_or_404(Leave.objects.select_for_update(), pk=leave_id)
+        if new_status == Leave.Status.APPROVED:
+            User.objects.select_for_update().get(pk=leave.employee_id)
 
         denial = review_denial_reason(leave, reviewer)
         if denial:
@@ -190,9 +267,17 @@ def _review_leave(*, leave_id, reviewer, new_status):
                 f"Only PENDING leaves can be reviewed. This leave is already {leave.status}."
             )
 
+        if new_status == Leave.Status.APPROVED:
+            validate_leave_limit(
+                leave.employee, leave.leave_type, leave.start_date, leave.end_date,
+                exclude_id=leave.pk,
+            )
+
         leave.status = new_status
         leave.approved_by = reviewer
-        leave.save(update_fields=["status", "approved_by"])
+        leave.review_comment = comment
+        leave.save(update_fields=["status", "approved_by", "review_comment"])
+
     return leave
 
 
@@ -202,6 +287,9 @@ def _notify_employee_of_decision(leave, reviewer):
         f"Your {leave.get_leave_type_display()} leave request from {leave.start_date} "
         f"to {leave.end_date} was {decision} by {reviewer.name}."
     )
+    if leave.review_comment:
+        message += f" Note: {leave.review_comment}"
+
     LeaveNotification.objects.create(
         recipient=leave.employee,
         leave=leave,
@@ -220,17 +308,30 @@ def _notify_employee_of_decision(leave, reviewer):
     transaction.on_commit(send_employee_email)
 
 
-def approve_leave(*, leave_id, reviewer):
+def approve_leave(*, leave_id, reviewer, comment=""):
+    """Approve a leave. The comment is optional."""
     leave = _review_leave(
-        leave_id=leave_id, reviewer=reviewer, new_status=Leave.Status.APPROVED
+        leave_id=leave_id,
+        reviewer=reviewer,
+        new_status=Leave.Status.APPROVED,
+        comment=(comment or "").strip(),
     )
     _notify_employee_of_decision(leave, reviewer)
     return leave
 
 
-def reject_leave(*, leave_id, reviewer):
+def reject_leave(*, leave_id, reviewer, comment=""):
+    """Reject a leave. A reason is required."""
+    comment = (comment or "").strip()
+    if not comment:
+        raise ValidationError(
+            {"review_comment": ["A reason is required when rejecting a leave."]}
+        )
     leave = _review_leave(
-        leave_id=leave_id, reviewer=reviewer, new_status=Leave.Status.REJECTED
+        leave_id=leave_id,
+        reviewer=reviewer,
+        new_status=Leave.Status.REJECTED,
+        comment=comment,
     )
     _notify_employee_of_decision(leave, reviewer)
     return leave
@@ -241,9 +342,7 @@ def delete_pending_leave(*, leave_id, actor):
     Delete your own leave, but only while it is still PENDING.
 
     This is a SOFT delete: nothing is removed from the database. The leave is
-    marked DELETED and remembers who deleted it and when, so the history stays
-    visible. A deleted leave no longer blocks the calendar and cannot be
-    reviewed, edited or deleted again.
+    marked DELETED and remembers who deleted it and when.
     """
     with transaction.atomic():
         leave = get_object_or_404(Leave.objects.select_for_update(), pk=leave_id)

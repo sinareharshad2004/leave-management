@@ -10,4 +10,5 @@ urlpatterns = [
     path("manager/login/", ManagerLoginView.as_view(), name="auth-manager-login"),
     path("token/refresh/", TokenRefreshView.as_view(), name="auth-token-refresh"),
     path("me/", MeView.as_view(), name="auth-me"),
+    path("managers/", ManagerLoginView.as_view(), name="auth-manager-login"),
 ]

@@ -7,6 +7,7 @@ from rest_framework_simplejwt.views import TokenObtainPairView
 from .permissions import IsAdminRole
 from .serializers import (
     EmployeeTokenObtainPairSerializer,
+    ManagerCreateSerializer,
     ManagerTokenObtainPairSerializer,
     RegisterSerializer,
     UserSerializer,
@@ -59,3 +60,16 @@ class ManagerLoginView(TokenObtainPairView):
     """POST /api/auth/manager/login/ - only MANAGER (and ADMIN) accounts can log in here."""
 
     serializer_class = ManagerTokenObtainPairSerializer
+
+
+class ManagerCreateView(generics.CreateAPIView):
+    """POST /api/auth/managers/ - admin only."""
+
+    serializer_class = ManagerCreateSerializer
+    permission_classes = [IsAdminRole]
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user = serializer.save()
+        return Response(UserSerializer(user).data, status=status.HTTP_201_CREATED)
